@@ -81,17 +81,18 @@ pub fn matmul_tiling(
 ) {
     for inner_tile in (0..inners).step_by(tile_size) {
         for row in 0..rows {
-            let inner_tile_end = (inner_tile + tile_size).min(inners);
+            let inner_tile_end: usize = std::cmp::min(inners, inner_tile + tile_size);
             for inner in inner_tile..inner_tile_end {
-                for column in 0..columns {
-                    result[row * column + column] +=
-                        left[row * inners + inner] * right[inner * columns + column];
+                for col in 0..columns {
+                    result[row * columns + col] +=
+                        left[row * inners + inner] * right[inner * columns + col];
                 }
             }
         }
     }
 }
-pub fn multhreaded_tiled_mat_mul(
+
+pub fn multithreaded_tiled_mat_mul(
     rows: usize,
     columns: usize,
     inners: usize,
@@ -100,25 +101,31 @@ pub fn multhreaded_tiled_mat_mul(
     right: &[f32],
     result: &mut [f32],
 ) {
-    let chunk_size = 512;
-    result
-        .par_chunks_mut(columns * chunk_size)
-        .for_each(|result_chunk| {
-            for row_tile in (0..rows).step_by(chunk_size) {
-                for column_tile in (0..columns).step_by(chunk_size) {
+    let tile_size_outer = 256; // Same outer tiling as the C++ code
+    let pool = rayon::ThreadPoolBuilder::new().num_threads(8).build().unwrap();
+
+    pool.install(|| {
+        result
+            .par_chunks_mut(tile_size_outer * columns) // Each chunk is a contiguous block of `tile_size_outer` rows
+            .enumerate()
+            .for_each(|(tile_row_id, result_chunk)| {
+                let row_tile_start = tile_row_id * tile_size_outer;
+                let row_tile_end = (row_tile_start + tile_size_outer).min(rows);
+
+                for column_tile in (0..columns).step_by(tile_size_outer) {
                     for inner_tile in (0..inners).step_by(tile_size) {
-                        for row in row_tile..std::cmp::min(row_tile + chunk_size, rows) {
-                            let inner_tile_end = std::cmp::min(inners, inner_tile + tile_size);
+                        for row in row_tile_start..row_tile_end {
+                            let inner_tile_end = (inner_tile + tile_size).min(inners);
                             for inner in inner_tile..inner_tile_end {
-                                for col in column_tile..std::cmp::min(column_tile + chunk_size, columns) {
-                                    let result_index = row * columns + col;
-                                    result_chunk[result_index % (columns * chunk_size)] +=
+                                for col in column_tile..(column_tile + tile_size_outer).min(columns)
+                                {
+                                    result_chunk[(row - row_tile_start) * columns + col] +=
                                         left[row * inners + inner] * right[inner * columns + col];
                                 }
                             }
                         }
                     }
                 }
-            }
-        });
+            });
+    })
 }

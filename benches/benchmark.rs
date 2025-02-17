@@ -3,7 +3,7 @@ use matmul_rs::*;
 
 fn benchmark(c: &mut Criterion) {
     let sizes = vec![64, 128, 256, 512, 1024];
-    let tile_size = 128;
+    let tile_size = 64;
     
     let mut group = c.benchmark_group("matrix_multiplication");
     group.plot_config(PlotConfiguration::default()
@@ -31,7 +31,7 @@ fn benchmark(c: &mut Criterion) {
         });
         
         group.bench_with_input(BenchmarkId::new("multithreaded_tiled", size), &size, |b, &size| {
-            b.iter(|| multhreaded_tiled_mat_mul(size, size, size, tile_size, &left, &right, &mut result))
+            b.iter(|| multithreaded_tiled_mat_mul(size, size, size, tile_size, &left, &right, &mut result))
         });
     }
 
