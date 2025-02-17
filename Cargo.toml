@@ -1,0 +1,18 @@
+[package]
+name = "matmul_rs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rayon = "1.8"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "benchmark"
+harness = false
+path = "benches/benchmark.rs"
+
+[profile.dev]
+opt-level = 3
