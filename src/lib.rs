@@ -15,11 +15,8 @@ pub fn naive_mat_mul(
     for row in 0..rows {
         for col in 0..columns {
             for inner in 0..inners {
-                let left_idx = row * inners + inner;
-                let right_idx = inner * columns + col;
-                let result_idx = row * columns + col;
-
-                result[result_idx] += left[left_idx] * right[right_idx];
+                result[row * columns + col] +=
+                    left[row * inners + inner] * right[inner * columns + col];
             }
         }
     }
@@ -38,13 +35,10 @@ pub fn naive_mat_mul_in_reg(
     for row in 0..rows {
         for col in 0..columns {
             let mut acc: f32 = 0.0;
-            let result_idx = row * columns + col;
             for inner in 0..inners {
-                let left_idx = row * inners + inner;
-                let right_idx = inner * columns + col;
-                acc += left[left_idx] * right[right_idx]
+                acc += left[row * inners + inner] * right[inner * columns + col];
             }
-            result[result_idx] = acc;
+            result[row * columns + col] = acc;
         }
     }
 }
@@ -60,11 +54,8 @@ pub fn matmul_with_good_loop_order(
     for row in 0..rows {
         for inner in 0..inners {
             for col in 0..columns {
-                let left_idx = row * columns + inner;
-                let right_idx = inner * columns + col;
-                let result_idx = row * columns + col;
-
-                result[result_idx] += left[left_idx] * right[right_idx];
+                result[row * columns + col] +=
+                    left[row * inners + inner] * right[inner * columns + col];
             }
         }
     }
@@ -102,7 +93,10 @@ pub fn multithreaded_tiled_mat_mul(
     result: &mut [f32],
 ) {
     let tile_size_outer = 256; // Same outer tiling as the C++ code
-    let pool = rayon::ThreadPoolBuilder::new().num_threads(8).build().unwrap();
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(6)
+        .build()
+        .unwrap();
 
     pool.install(|| {
         result
@@ -128,4 +122,52 @@ pub fn multithreaded_tiled_mat_mul(
                 }
             });
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_matrix_eq(result: &[f32], expected: &[f32]) {
+        assert_eq!(result.len(), expected.len());
+        for (a, b) in result.iter().zip(expected.iter()) {
+            assert!((a - b).abs() < 1e-6, "{} != {}", a, b);
+        }
+    }
+
+    fn setup_matrices() -> (usize, usize, usize, Vec<f32>, Vec<f32>, Vec<f32>) {
+        let rows = 3;
+        let columns = 3;
+        let inners = 3;
+        let left = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0];
+        let right = vec![9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0];
+        let expected = vec![30.0, 24.0, 18.0, 84.0, 69.0, 54.0, 138.0, 114.0, 90.0];
+        (rows, columns, inners, left, right, expected)
+    }
+
+    #[test]
+    fn test_naive_mat_mul() {
+        let (rows, columns, inners, left, right, expected) = setup_matrices();
+
+        let mut result = vec![0.0; rows * columns];
+        naive_mat_mul(rows, columns, inners, &left, &right, &mut result);
+        assert_matrix_eq(&result, &expected);
+
+        result.fill(0.0);
+        naive_mat_mul_in_reg(rows, columns, inners, &left, &right, &mut result);
+        assert_matrix_eq(&result, &expected);
+
+        result.fill(0.0);
+        matmul_with_good_loop_order(rows, columns, inners, &left, &right, &mut result);
+        assert_matrix_eq(&result, &expected);
+
+        result.fill(0.0);
+        let tile_size = 2;
+        matmul_tiling(rows, columns, inners, tile_size, &left, &right, &mut result);
+        assert_matrix_eq(&result, &expected);
+
+        result.fill(0.0);
+        multithreaded_tiled_mat_mul(rows, columns, inners, tile_size, &left, &right, &mut result);
+        assert_matrix_eq(&result, &expected);
+    }
 }
