@@ -1,6 +1,6 @@
 // http://matrixmultiplication.xyz/
 // If you have forgotten how ole Gilbert teacher matrix multiplication
-//
+//https://stackoverflow.com/questions/2151084/map-a-2d-array-onto-a-1d-array
 // Trying to recreate this? https://siboehm.com/articles/22/Fast-MMM-on-CPU
 use rayon::prelude::*;
 
